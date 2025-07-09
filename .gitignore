@@ -1,9 +1,5 @@
 uploads/
-*.xlsx
-__pycache__/
 *.pyc
-*.pyo
-*.pyd
-.cache/
-.pythonlibs/
-.upm/
+__pycache__/
+*.log
+*.sqlite3
