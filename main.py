@@ -1,27 +1,33 @@
-from flask import Flask, request, jsonify, render_template, send_file
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import os
 import pandas as pd
 from datetime import datetime
 from werkzeug.utils import secure_filename
+
+# 本地模块引用
 from utils import extract_student_name, extract_student_answers
 from skema_parser import extract_skema
 
 app = Flask(__name__)
 CORS(app)
 
-UPLOAD_FOLDER = 'uploads'
+# 安全的上传文件夹，Render 会在容器 tmp/ 下写比较安全
+UPLOAD_FOLDER = '/tmp/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# 成绩缓存
 results_cache = []
 
 # 允许上传的文件类型
 ALLOWED_EXTENSIONS = {'pdf', 'docx', 'jpg', 'jpeg', 'png'}
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return jsonify({"message": "OMR Marker is running!"})
 
 @app.route("/grade", methods=["POST"])
 def grade():
@@ -29,10 +35,10 @@ def grade():
     student_file = request.files.get("student")
 
     if not skema_file or not student_file:
-        return jsonify({"error": "缺少 skema 或 student 文件"}), 400
+        return jsonify({"error": "Missing skema or student file"}), 400
 
     if not allowed_file(skema_file.filename) or not allowed_file(student_file.filename):
-        return jsonify({"error": "上传的文件类型不被允许"}), 400
+        return jsonify({"error": "File type not allowed"}), 400
 
     skema_path = os.path.join(UPLOAD_FOLDER, secure_filename(skema_file.filename))
     student_path = os.path.join(UPLOAD_FOLDER, secure_filename(student_file.filename))
@@ -42,7 +48,7 @@ def grade():
     skema_answers = extract_skema(skema_path)
     total_questions = len(skema_answers)
     if total_questions == 0:
-        return jsonify({"error": "Skema 读取失败，请检查 Word 或 PDF 格式"}), 400
+        return jsonify({"error": "Skema extraction failed. Please check file format."}), 400
 
     student_answers = extract_student_answers(student_path, total_questions)
     correct = []
@@ -70,16 +76,14 @@ def grade():
 @app.route("/export-excel", methods=["GET"])
 def export_excel():
     if not results_cache:
-        return jsonify({"error": "暂无成绩可导出"}), 400
+        return jsonify({"error": "No results to export"}), 400
 
     df = pd.DataFrame(results_cache)
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
-    file_path = f"成绩表_{now}.xlsx"
+    file_path = os.path.join("/tmp", f"results_{now}.xlsx")
     df.to_excel(file_path, index=False)
     return send_file(file_path, as_attachment=True)
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
-
-
-    
+# 这行不要加 host/port，因为 Render 会用 gunicorn 启动
+# if __name__ == "__main__":
+#     app.run(debug=True)
