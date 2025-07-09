@@ -1,0 +1,10 @@
+Flask
+flask-cors
+pandas
+python-docx
+PyMuPDF
+easyocr
+torch
+gunicorn
+werkzeug
+opencv-python-headless

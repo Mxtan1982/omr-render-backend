@@ -1,0 +1,9 @@
+uploads/
+*.xlsx
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.cache/
+.pythonlibs/
+.upm/
