@@ -5,21 +5,16 @@ import pandas as pd
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
-# 本地模块引用
 from utils import extract_student_name, extract_student_answers
 from skema_parser import extract_skema
 
 app = Flask(__name__)
 CORS(app)
 
-# 安全的上传文件夹，Render 会在容器 tmp/ 下写比较安全
 UPLOAD_FOLDER = '/tmp/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# 成绩缓存
 results_cache = []
-
-# 允许上传的文件类型
 ALLOWED_EXTENSIONS = {'pdf', 'docx', 'jpg', 'jpeg', 'png'}
 
 def allowed_file(filename):
@@ -84,6 +79,9 @@ def export_excel():
     df.to_excel(file_path, index=False)
     return send_file(file_path, as_attachment=True)
 
-# 这行不要加 host/port，因为 Render 会用 gunicorn 启动
-# if __name__ == "__main__":
-#     app.run(debug=True)
+@app.route("/debug")
+def debug():
+    return jsonify({
+        "message": "Server is live",
+        "cached_results": results_cache
+    })
