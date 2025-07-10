@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
 import os
 import pandas as pd
@@ -15,6 +15,7 @@ UPLOAD_FOLDER = '/tmp/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 results_cache = []
+
 ALLOWED_EXTENSIONS = {'pdf', 'docx', 'jpg', 'jpeg', 'png'}
 
 def allowed_file(filename):
@@ -22,7 +23,7 @@ def allowed_file(filename):
 
 @app.route("/")
 def index():
-    return jsonify({"message": "OMR Marker is running!"})
+    return render_template("index.html")
 
 @app.route("/grade", methods=["POST"])
 def grade():
@@ -46,20 +47,13 @@ def grade():
         return jsonify({"error": "Skema extraction failed. Please check file format."}), 400
 
     student_answers = extract_student_answers(student_path, total_questions)
-    correct = []
-    incorrect = []
-    for i, (a, b) in enumerate(zip(skema_answers, student_answers)):
-        if a == b:
-            correct.append(i + 1)
-        else:
-            incorrect.append(i + 1)
-
-    score = len(correct)
+    correct = [i+1 for i, (a,b) in enumerate(zip(skema_answers, student_answers)) if a == b]
+    incorrect = [i+1 for i in range(total_questions) if (i+1) not in correct]
     student_name = extract_student_name(student_path)
 
     result = {
         "name": student_name,
-        "score": score,
+        "score": len(correct),
         "total": total_questions,
         "correct": correct,
         "incorrect": incorrect
@@ -68,20 +62,13 @@ def grade():
     results_cache.append(result)
     return jsonify(result)
 
-@app.route("/export-excel", methods=["GET"])
+@app.route("/export-excel")
 def export_excel():
     if not results_cache:
         return jsonify({"error": "No results to export"}), 400
 
     df = pd.DataFrame(results_cache)
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
-    file_path = os.path.join("/tmp", f"results_{now}.xlsx")
+    file_path = f"/tmp/results_{now}.xlsx"
     df.to_excel(file_path, index=False)
     return send_file(file_path, as_attachment=True)
-
-@app.route("/debug")
-def debug():
-    return jsonify({
-        "message": "Server is live",
-        "cached_results": results_cache
-    })
