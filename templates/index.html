@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>My Guru OMR Smart Marker</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      font-size: 18px;
+      padding: 20px;
+      background-color: #f4f4f4;
+      color: #000;
+      text-align: center;
+    }
+    .logo {
+      width: 120px;
+      border-radius: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      margin-bottom: 10px;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 20px;
+    }
+    .form-section {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      max-width: 600px;
+      margin: 0 auto;
+      text-align: left;
+    }
+    label {
+      font-weight: bold;
+    }
+    input[type="file"], input[type="text"] {
+      font-size: 16px;
+      padding: 6px;
+    }
+    button {
+      font-size: 18px;
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      width: fit-content;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #result, #log {
+      margin-top: 20px;
+      font-size: 16px;
+      white-space: pre-line;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <img src="/static/logo.png" class="logo" alt="OMR Icon">
+  <h1>📘 My Guru OMR Smart Marker</h1>
+  <div class="form-section">
+    <label>📄 上传 Skema Jawapan (PDF/Image)：</label>
+    <input type="file" id="skema" accept=".jpg,.jpeg,.png,.pdf,.docx" />
+
+    <label>📸 上传学生答题卡 (支持多张)：</label>
+    <input type="file" id="students" multiple accept=".jpg,.jpeg,.png" />
+
+    <button onclick="simulateAd()">▶️ 看广告批改（可批改5张）</button>
+    <button onclick="gradeAll()">🔍 批改 / Start Grading</button>
+    <button onclick="exportExcel()">📥 导出成绩 Excel</button>
+  </div>
+
+  <div id="log"></div>
+  <div id="result"></div>
+
+  <script>
+    let credit = 0;
+    let allResults = [];
+
+    function simulateAd() {
+      alert("🎬 模拟观看广告中...");
+      credit += 5;
+      document.getElementById("log").innerText = `✅ 可批改学生数：${credit}`;
+    }
+
+    async function gradeAll() {
+      const skemaFile = document.getElementById("skema").files[0];
+      const studentFiles = document.getElementById("students").files;
+
+      if (!skemaFile || studentFiles.length === 0) {
+        alert("请上传标准答案和至少一位学生答题卡！");
+        return;
+      }
+
+      if (studentFiles.length > credit) {
+        alert("您的广告观看次数不足，请重新观看广告。");
+        return;
+      }
+
+      allResults = [];
+      for (let i = 0; i < studentFiles.length; i++) {
+        const formData = new FormData();
+        formData.append("skema", skemaFile);
+        formData.append("student", studentFiles[i]);
+
+        const res = await fetch("/grade", { method: "POST", body: formData });
+        const data = await res.json();
+        allResults.push(data);
+        credit--;
+      }
+
+      document.getElementById("result").innerText = allResults.map((r, i) =>
+        `👤 学生：${r.name || "Unknown"}
+🎯 得分：${r.score}/${r.total} = ${(r.score / r.total * 100).toFixed(1)}%
+✅ 对题号：${r.correct.join(", ")}
+❌ 错题号：${r.incorrect.join(", ")}`
+      ).join("\n\n");
+
+      document.getElementById("log").innerText = `剩余可批改学生数：${credit}`;
+    }
+
+    function exportExcel() {
+      alert("📥 系统将打包并导出成绩表...");
+      window.location.href = "/export-excel";
+    }
+  </script>
+</body>
+</html>
