@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <title>My Guru OMR Smart Marker</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      font-size: 18px;
+      padding: 20px;
+      background: #f4f4f4;
+      color: #000;
+      text-align: center;
+    }
+    .logo {
+      width: 120px;
+      border-radius: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      margin-bottom: 10px;
+    }
+    h1 { font-size: 28px; margin-bottom: 20px; }
+    .form-section {
+      display: flex; flex-direction: column; gap: 15px;
+      max-width: 600px; margin: 0 auto; text-align: left;
+    }
+    label { font-weight: bold; }
+    input[type="file"], select {
+      font-size: 16px; padding: 6px; width: 100%;
+    }
+    button {
+      font-size: 18px; padding: 10px 20px;
+      background: #007bff; color: #fff; border: none;
+      border-radius: 6px; cursor: pointer; width: fit-content;
+    }
+    button:hover { background: #0056b3; }
+    #result, #log { margin-top: 20px; font-size: 16px; white-space: pre-line; text-align: left; }
+  </style>
+</head>
+<body>
+  <img src="static/logo.png" class="logo" alt="OMR Icon" />
+  <h1>📘 My Guru OMR Smart Marker</h1>
+  <div class="form-section">
+    <label>🏫 选择学校/考试：</label>
+    <select id="school">
+      <option value="SJKC">SJKC (华小)</option>
+      <option value="SK">SK</option>
+      <option value="SM">SM</option>
+      <option value="SMK">SMK</option>
+      <option value="SPM">SPM</option>
+      <option value="STPM">STPM</option>
+      <option value="UPSR">UPSR</option>
+      <option value="UASA">UASA</option>
+      <option value="PT3">PT3</option>
+      <option value="SEKOLAH_SENI">SEKOLAH SENI</option>
+      <option value="SEKOLAH_SUKAN">SEKOLAH SUKAN</option>
+      <option value="VOKASIONAL">VOKASIONAL</option>
+    </select>
+
+    <label>📄 上传 Skema Jawapan：</label>
+    <input type="file" id="skema" accept=".jpg,.jpeg,.png,.pdf,.docx" />
+
+    <label>📸 上传学生答题卡 (可多张)：</label>
+    <input type="file" id="students" multiple accept=".jpg,.jpeg,.png" />
+
+    <button onclick="simulateAd()">▶️ 看广告批改（+5张）</button>
+    <button id="gradeBtn">🔍 批改 / Start Grading</button>
+    <button onclick="exportExcel()">📥 导出成绩 Excel</button>
+  </div>
+
+  <div id="log"></div>
+  <div id="result"></div>
+
+  <script type="module">
+    import { AdMob, BannerAdSize, BannerAdPosition } from 'capacitor-admob';
+
+    // ✅ 你的后端地址
+    const apiUrl = 'https://myguru-omr-smart-marker.onrender.com';
+
+    let credit = 0, results = [];
+
+    // ✅ 初始化 AdMob
+    AdMob.initialize();
+
+    // ✅ 横幅广告
+    AdMob.showBanner({
+      adId: "ca-app-pub-4570977068750116/8840720847",
+      adSize: BannerAdSize.ADAPTIVE_BANNER,
+      position: BannerAdPosition.BOTTOM_CENTER
+    });
+
+    async function showInterstitial() {
+      await AdMob.prepareInterstitial({
+        adId: "ca-app-pub-4570977068750116/5589082998"
+      });
+      await AdMob.showInterstitial();
+    }
+
+    async function simulateAd() {
+      await showInterstitial();
+      credit += 5;
+      document.getElementById("log").innerText = `✅ 可批改学生数：${credit}`;
+    }
+
+    async function gradeAll() {
+      const skema = document.getElementById("skema").files[0];
+      const students = document.getElementById("students").files;
+      const school = document.getElementById("school").value;
+
+      if (!skema || students.length === 0) return alert("请上传 Skema 和答题卡！");
+      if (students.length > credit) return alert("请先看广告增加额度！");
+
+      results = [];
+      for (let s of students) {
+        const f = new FormData();
+        f.append("skema", skema);
+        f.append("student", s);
+        f.append("school", school);
+
+        const res = await fetch(`${apiUrl}/grade`, { method: "POST", body: f });
+        const data = await res.json();
+        results.push(data);
+        credit--;
+      }
+
+      document.getElementById("result").innerText = results.map(r =>
+        `👤 ${r.name || "Unknown"}
+🎯 ${r.score}/${r.total} = ${(r.score/r.total*100).toFixed(1)}%
+✅ ${r.correct.join(", ")}
+❌ ${r.incorrect.join(", ")}`
+      ).join("\n\n");
+
+      document.getElementById("log").innerText = `剩余可批改：${credit}`;
+
+      await showInterstitial();
+    }
+
+    document.getElementById("gradeBtn").addEventListener("click", gradeAll);
+
+    function exportExcel() {
+      window.location.href = `${apiUrl}/export-excel`;
+    }
+  </script>
+</body>
+</html>
