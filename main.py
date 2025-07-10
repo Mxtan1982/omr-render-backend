@@ -5,6 +5,7 @@ import pandas as pd
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
+# 自己的本地工具
 from utils import extract_student_name, extract_student_answers
 from skema_parser import extract_skema
 
@@ -23,12 +24,15 @@ def allowed_file(filename):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return jsonify({"message": "✅ OMR Marker is running!"})
 
 @app.route("/grade", methods=["POST"])
 def grade():
     skema_file = request.files.get("skema")
     student_file = request.files.get("student")
+
+    # ✅ 新增：支持前端或 Postman 传 student_name
+    student_name = request.form.get("student_name")
 
     if not skema_file or not student_file:
         return jsonify({"error": "Missing skema or student file"}), 400
@@ -49,7 +53,10 @@ def grade():
     student_answers = extract_student_answers(student_path, total_questions)
     correct = [i+1 for i, (a,b) in enumerate(zip(skema_answers, student_answers)) if a == b]
     incorrect = [i+1 for i in range(total_questions) if (i+1) not in correct]
-    student_name = extract_student_name(student_path)
+
+    # ✅ 如果没传，就走自动识别
+    if not student_name:
+        student_name = extract_student_name(student_path)
 
     result = {
         "name": student_name,
@@ -62,7 +69,7 @@ def grade():
     results_cache.append(result)
     return jsonify(result)
 
-@app.route("/export-excel")
+@app.route("/export-excel", methods=["GET"])
 def export_excel():
     if not results_cache:
         return jsonify({"error": "No results to export"}), 400
@@ -72,3 +79,7 @@ def export_excel():
     file_path = f"/tmp/results_{now}.xlsx"
     df.to_excel(file_path, index=False)
     return send_file(file_path, as_attachment=True)
+
+# Render 部署时不需要加 run
+# if __name__ == "__main__":
+#     app.run(debug=True)
