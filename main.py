@@ -1,94 +1,84 @@
-from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS
+import pytesseract
+import cv2
 import os
-import pandas as pd
-from datetime import datetime
-from werkzeug.utils import secure_filename
+import re
+import random
 
-# 🟢 自己的工具模块（你之前写好的）
-from utils import extract_student_name, extract_student_answers
-from skema_parser import extract_skema
+# ================================
+# 🎯 学生名字识别
+# ================================
+def extract_student_name(image_path, template_name=None):
+    """
+    从答题卡图像用 OCR 识别学生名字区域
+    如果识别不到，fallback 用文件名
+    """
+    text = ""
 
-app = Flask(__name__)
-CORS(app)
+    try:
+        # 读取图片
+        img = cv2.imread(image_path)
 
-# 🟢 上传路径（Render 容器推荐 /tmp）
-UPLOAD_FOLDER = '/tmp/uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        # ✅ 根据你的答题卡调整坐标！下面是示例值
+        # 左上角大概放 `NAMA` 一行区域
+        x, y, w, h = 30, 20, 500, 100  # 你可以根据实际答题卡微调
 
-# 🟢 内存缓存：记录所有批改结果
-results_cache = []
+        # 截取名字区域
+        name_region = img[y:y + h, x:x + w]
 
-# 🟢 允许上传的文件扩展名
-ALLOWED_EXTENSIONS = {'pdf', 'docx', 'jpg', 'jpeg', 'png'}
+        # 灰度化
+        gray = cv2.cvtColor(name_region, cv2.COLOR_BGR2GRAY)
 
-def allowed_file(filename):
-    """检查文件扩展名"""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+        # 二值化（可选）
+        _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-@app.route("/")
-def index():
-    return jsonify({"message": "✅ OMR Marker is running! Use POST /grade to grade papers."})
+        # 用 pytesseract OCR
+        text = pytesseract.image_to_string(thresh, lang="eng").strip()
 
-@app.route("/grade", methods=["POST"])
-def grade():
-    skema_file = request.files.get("skema")
-    student_file = request.files.get("student")
-    # 🟢 前端/测试可传 student_name（可选）
-    student_name = request.form.get("student_name")
+        if text:
+            print(f"✅ OCR 识别到名字：{text}")
 
-    if not skema_file or not student_file:
-        return jsonify({"error": "Missing skema or student file"}), 400
+    except Exception as e:
+        print(f"⚠️ OCR 出错：{e}")
 
-    if not allowed_file(skema_file.filename) or not allowed_file(student_file.filename):
-        return jsonify({"error": "Unsupported file type"}), 400
+    # 如果没识别到就用文件名推测
+    if not text or len(text) < 2:
+        text = fallback_name_from_filename(image_path)
+        print(f"✅ 使用文件名推测：{text}")
 
-    # 🟢 临时保存上传文件
-    skema_path = os.path.join(UPLOAD_FOLDER, secure_filename(skema_file.filename))
-    student_path = os.path.join(UPLOAD_FOLDER, secure_filename(student_file.filename))
-    skema_file.save(skema_path)
-    student_file.save(student_path)
+    return text
 
-    # 🟢 提取标准答案
-    skema_answers = extract_skema(skema_path)
-    total_questions = len(skema_answers)
-    if total_questions == 0:
-        return jsonify({"error": "Skema extraction failed, please check file format"}), 400
 
-    # 🟢 生成学生答案（占位符随机）
-    student_answers = extract_student_answers(student_path, total_questions)
+# ================================
+# 🎯 文件名 fallback 方法
+# ================================
+def fallback_name_from_filename(image_path):
+    """
+    如果 OCR 失败，就用文件名推测
+    """
+    filename = os.path.splitext(os.path.basename(image_path))[0]
 
-    # 🟢 统计对错
-    correct = [i+1 for i, (a,b) in enumerate(zip(skema_answers, student_answers)) if a == b]
-    incorrect = [i+1 for i in range(total_questions) if i+1 not in correct]
+    if "WhatsApp" in filename or "WA" in filename:
+        time_match = re.search(r'(\d{2}\.\d{2}\.\d{2})', filename)
+        if time_match:
+            return f"学生_{time_match.group(1).replace('.', '')}"
+        parts = filename.split('_')
+        if len(parts) > 1:
+            return f"学生_{parts[-1][:8]}"
 
-    # 🟢 没传 student_name 时用自动识别
-    if not student_name:
-        student_name = extract_student_name(student_path)
+    clean_name = re.sub(r'[^a-zA-Z0-9\u4e00-\u9fff]', '_', filename)
+    clean_name = re.sub(r'_+', '_', clean_name).strip('_')
 
-    result = {
-        "name": student_name,
-        "score": len(correct),
-        "total": total_questions,
-        "correct": correct,
-        "incorrect": incorrect
-    }
+    return clean_name[:20] if clean_name else "Student_Unknown"
 
-    # 🟢 加入缓存
-    results_cache.append(result)
-    return jsonify(result)
 
-@app.route("/export-excel", methods=["GET"])
-def export_excel():
-    if not results_cache:
-        return jsonify({"error": "No results to export"}), 400
-
-    df = pd.DataFrame(results_cache)
-    now = datetime.now().strftime("%Y%m%d_%H%M%S")
-    file_path = f"/tmp/results_{now}.xlsx"
-    df.to_excel(file_path, index=False)
-    return send_file(file_path, as_attachment=True)
-
-# 🟢 Render 部署不需要 app.run()
-# if __name__ == "__main__":
-#     app.run(debug=True)
+# ================================
+# 🎯 学生答案（示例随机）
+# ================================
+def extract_student_answers(image_path, total_questions):
+    """
+    临时示例：随机生成学生答案
+    以后可换成真正的 OMR 圈读识别
+    """
+    choices = ['A', 'B', 'C', 'D']
+    print(f"📝 生成 {total_questions} 题学生答案")
+    return [random.choice(choices) for _ in range(total_questions)]
