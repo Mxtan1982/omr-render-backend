@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: omr-render-backend
+    name: omr-ocr-backend
     env: python
     buildCommand: "pip install -r requirements.txt"
-    startCommand: ".venv/bin/gunicorn --bind 0.0.0.0:$PORT --timeout 120 main:app"
+    startCommand: "gunicorn --bind 0.0.0.0:$PORT --timeout 120 main:app"
