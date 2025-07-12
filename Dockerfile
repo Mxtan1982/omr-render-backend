@@ -1,21 +1,22 @@
-# ✅ 使用官方 Python 镜像
+# 使用 Python 官方镜像
 FROM python:3.10-slim
 
-# ✅ 安装 Tesseract OCR 和中文语言包
+# 安装 tesseract-ocr 和其他依赖
 RUN apt-get update && \
-    apt-get install -y tesseract-ocr tesseract-ocr-chi-sim libglib2.0-0 libsm6 libxext6 libxrender1 && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get install -y tesseract-ocr libglib2.0-0 libsm6 libxext6 libxrender1 && \
+    rm -rf /var/lib/apt/lists/*
 
-# ✅ 设置工作目录
+# 设置工作目录
 WORKDIR /app
 
-# ✅ 复制文件
-COPY requirements.txt ./
-COPY main.py ./
+# 把当前目录代码复制到容器
+COPY . /app
 
-# ✅ 安装依赖
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+# 安装 Python 依赖
+RUN pip install --no-cache-dir -r requirements.txt
 
-# ✅ 运行 gunicorn，绑定到 Render 的 $PORT
+# 暴露端口（Render 会自动用 $PORT）
+EXPOSE 8080
+
+# 容器启动时执行
 CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--timeout", "120", "main:app"]
