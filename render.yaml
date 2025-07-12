@@ -1,7 +1,6 @@
 services:
   - type: web
-    name: my-omr-app
-    env: docker
-    plan: free
-    region: singapore
-    rootDir: .
+    name: omr-marker
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT main:app
