@@ -4,5 +4,4 @@ services:
     env: docker
     plan: free
     region: singapore
-    branch: main
     rootDir: .
