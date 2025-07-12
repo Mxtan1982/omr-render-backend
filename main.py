@@ -1,43 +1,71 @@
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
+from werkzeug.utils import secure_filename
+import pandas as pd
+from datetime import datetime
 import cv2
 import pytesseract
+import random
+
+from utils import fallback_name_from_filename
+
+UPLOAD_FOLDER = "/tmp/uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-UPLOAD_FOLDER = '/tmp/uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+results_cache = []
 
 @app.route("/")
 def index():
-    return jsonify({"message": "✅ OMR OCR API Running"})
+    return jsonify({"message": "✅ OMR Marker is running!"})
 
-@app.route("/ocr", methods=["POST"])
-def ocr():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "Empty file name"}), 400
+@app.route("/grade", methods=["POST"])
+def grade():
+    skema = request.files.get("skema")
+    student = request.files.get("student")
+    if not skema or not student:
+        return jsonify({"error": "Missing skema or student file"}), 400
 
-    # 保存上传文件
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(filepath)
+    skema_filename = secure_filename(skema.filename)
+    student_filename = secure_filename(student.filename)
+    skema_path = os.path.join(UPLOAD_FOLDER, skema_filename)
+    student_path = os.path.join(UPLOAD_FOLDER, student_filename)
+    skema.save(skema_path)
+    student.save(student_path)
 
-    # OpenCV 读取 + pytesseract OCR
-    img = cv2.imread(filepath)
+    # ✅ 假的 skema 解析（示例 40题）
+    skema_answers = ['A'] * 40
+    student_answers = ['A'] * 40
+
+    # ✅ 简单模拟对比
+    correct = [i+1 for i, (a,b) in enumerate(zip(skema_answers, student_answers)) if a == b]
+    incorrect = [i+1 for i in range(len(skema_answers)) if i+1 not in correct]
+
+    # ✅ OCR 识别学生名字
+    img = cv2.imread(student_path)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    text = pytesseract.image_to_string(gray, lang="eng+chi_sim")
-    result = text.strip() or "未识别到内容"
+    text = pytesseract.image_to_string(gray, lang='eng+chi_sim').strip()
+    student_name = text if len(text) >= 2 else fallback_name_from_filename(student_path)
 
-    # 返回结果
-    return jsonify({
-        "filename": file.filename,
-        "recognized_text": result
-    })
+    result = {
+        "name": student_name,
+        "score": len(correct),
+        "total": len(skema_answers),
+        "correct": correct,
+        "incorrect": incorrect
+    }
+    results_cache.append(result)
+    return jsonify(result)
 
-if __name__ == "__main__":
-    # 本地调试可用，生产用 gunicorn
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+@app.route("/export-excel")
+def export_excel():
+    if not results_cache:
+        return jsonify({"error": "No results"}), 400
+
+    df = pd.DataFrame(results_cache)
+    now = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filepath = f"/tmp/results_{now}.xlsx"
+    df.to_excel(filepath, index=False)
+    return send_file(filepath, as_attachment=True)
