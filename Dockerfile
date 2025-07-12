@@ -1,28 +1,21 @@
-# 基础镜像，用带有 tesseract 的官方 Debian
+# ✅ 使用官方 Python 镜像
 FROM python:3.10-slim
 
-# 安装系统依赖：tesseract + opencv 所需的库
+# ✅ 安装 Tesseract OCR 和中文语言包
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    tesseract-ocr libgl1-mesa-glx libglib2.0-0 && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y tesseract-ocr tesseract-ocr-chi-sim libglib2.0-0 libsm6 libxext6 libxrender1 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# 设置工作目录
+# ✅ 设置工作目录
 WORKDIR /app
 
-# 复制 requirements.txt 并安装
-COPY requirements.txt .
+# ✅ 复制文件
+COPY requirements.txt ./
+COPY main.py ./
 
-RUN pip install --no-cache-dir -r requirements.txt
+# ✅ 安装依赖
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
 
-# 复制你的项目所有代码
-COPY . .
-
-# 可选：示范下载一个 tar.gz 并解压（可删除）
-# RUN curl -fSL https://example.com/mydata.tar.gz -o data.tar.gz \
-#     && tar -tzf data.tar.gz \
-#     && tar -xzf data.tar.gz -C /app \
-#     && rm data.tar.gz
-
-# 默认用 gunicorn 启动 Flask app，绑定 0.0.0.0:8080
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "120", "main:app"]
+# ✅ 运行 gunicorn，绑定到 Render 的 $PORT
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--timeout", "120", "main:app"]
